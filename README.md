@@ -30,7 +30,7 @@ docker compose exec cli-proxy-api /CLIProxyAPI/CLIProxyAPI --no-browser --login
 docker compose exec cli-proxy-api /CLIProxyAPI/CLIProxyAPI --no-browser --claude-login
 ```
 
-Відкриється URL — увійди через Anthropic акаунт (той самий що claude.ai). Платна підписка яку ти вже маєш — підійде.
+Відкриється URL — увійди через Anthropic акаунт.
 
 ### Крок 4 — Завантаж n8n workflow
 
@@ -81,7 +81,7 @@ n8n Workflow (:5678)
 
 CLIProxyAPI (:8317)
     ├── Gemini OAuth → безкоштовний Gemini 2.5
-    └── Claude OAuth → безкоштовний Claude (через твою підписку claude.ai)
+    └── Claude OAuth → безкоштовний Claude
 ```
 
 ## Структура проекту
