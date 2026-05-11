@@ -1,0 +1,207 @@
+{
+  "name": "Smart AI Failover (CLIProxyAPI)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-failover",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-entry",
+      "name": "Webhook — Entry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst startedAt = new Date().toISOString();\nreturn [{\n  json: {\n    prompt: body.prompt || '',\n    force_error: body.force_error === true,\n    started_at: startedAt\n  }\n}];"
+      },
+      "id": "prep-input",
+      "name": "Підготовка вхідних даних",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.force_error }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-force-error",
+      "name": "Force Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CLIPROXY_URL }}/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.CLIPROXY_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "gemini-2.5-flash",
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "role": "user",
+              "content": "={{ $('Підготовка вхідних даних').first().json.prompt }}"
+            }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "call-gemini",
+      "name": "Gemini (через CLIProxyAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [860, 180],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst text = resp?.choices?.[0]?.message?.content || null;\nif (!text) throw new Error('Gemini: empty response');\nreturn [{ json: { response: text, model_used: 'gemini', is_failover: false } }];"
+      },
+      "id": "parse-gemini",
+      "name": "Парсинг Gemini",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CLIPROXY_URL }}/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.CLIPROXY_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "model": "claude-sonnet-4-5-20250929",
+          "max_tokens": 1024,
+          "messages": [
+            {
+              "role": "user",
+              "content": "={{ $('Підготовка вхідних даних').first().json.prompt }}"
+            }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "call-claude",
+      "name": "Claude (Failover через CLIProxyAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [860, 440]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst text = resp?.choices?.[0]?.message?.content || null;\nif (!text) throw new Error('Claude: empty response');\nreturn [{ json: { response: text, model_used: 'claude', is_failover: true } }];"
+      },
+      "id": "parse-claude",
+      "name": "Парсинг Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 440]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputData = $('Підготовка вхідних даних').first().json;\nconst resultData = $input.first().json;\nconst completedAt = new Date().toISOString();\n\nreturn [{\n  json: {\n    prompt:       inputData.prompt,\n    force_error:  inputData.force_error,\n    started_at:   inputData.started_at,\n    completed_at: completedAt,\n    response:     resultData.response,\n    model_used:   resultData.model_used,\n    is_failover:  resultData.is_failover,\n    status:       'success'\n  }\n}];"
+      },
+      "id": "merge-result",
+      "name": "Збір результату",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/ai_requests",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "save-supabase",
+      "name": "Зберегти в Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1520, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"response\": \"{{ $('Збір результату').first().json.response.replace(/\"/g, '\\\\\"') }}\",\n  \"model_used\": \"{{ $('Збір результату').first().json.model_used }}\",\n  \"is_failover\": {{ $('Збір результату').first().json.is_failover }},\n  \"execution_ms\": {{ Math.round(new Date($('Збір результату').first().json.completed_at) - new Date($('Збір результату').first().json.started_at)) }}\n}"
+      },
+      "id": "respond-success",
+      "name": "Відповідь клієнту",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1740, 300]
+    }
+  ],
+  "connections": {
+    "Webhook — Entry": {
+      "main": [[{ "node": "Підготовка вхідних даних", "type": "main", "index": 0 }]]
+    },
+    "Підготовка вхідних даних": {
+      "main": [[{ "node": "Force Error?", "type": "main", "index": 0 }]]
+    },
+    "Force Error?": {
+      "main": [
+        [{ "node": "Claude (Failover через CLIProxyAPI)", "type": "main", "index": 0 }],
+        [{ "node": "Gemini (через CLIProxyAPI)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini (через CLIProxyAPI)": {
+      "main": [[{ "node": "Парсинг Gemini", "type": "main", "index": 0 }]],
+      "error": [[{ "node": "Claude (Failover через CLIProxyAPI)", "type": "main", "index": 0 }]]
+    },
+    "Парсинг Gemini": {
+      "main": [[{ "node": "Збір результату", "type": "main", "index": 0 }]]
+    },
+    "Claude (Failover через CLIProxyAPI)": {
+      "main": [[{ "node": "Парсинг Claude", "type": "main", "index": 0 }]]
+    },
+    "Парсинг Claude": {
+      "main": [[{ "node": "Збір результату", "type": "main", "index": 0 }]]
+    },
+    "Збір результату": {
+      "main": [[{ "node": "Зберегти в Supabase", "type": "main", "index": 0 }]]
+    },
+    "Зберегти в Supabase": {
+      "main": [[{ "node": "Відповідь клієнту", "type": "main", "index": 0 }]]
+    }
+  }
+}

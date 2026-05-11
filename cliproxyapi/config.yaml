@@ -1,0 +1,15 @@
+host: ""
+port: 8317
+
+api-keys:
+  - "my-local-key"
+
+debug: false
+
+request-retry: 3
+max-retry-interval: 30
+
+usage-statistics-enabled: true
+
+routing:
+  strategy: "round-robin"

@@ -1,0 +1,15 @@
+.env
+
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/.env*.local
+frontend/out/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+tests/node_modules
+
+.DS_Store
+*.pem

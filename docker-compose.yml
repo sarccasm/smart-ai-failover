@@ -1,0 +1,55 @@
+services:
+  cli-proxy-api:
+    image: eceasy/cli-proxy-api:latest
+    ports:
+      - "8317:8317"
+      - "8085:8085"
+      - "54545:54545"
+      - "1455:1455"
+      - "51121:51121"
+    volumes:
+      - ./cliproxyapi/config.yaml:/CLIProxyAPI/config.yaml
+      - cli_proxy_auth:/root/.cli-proxy-api
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_WEBHOOK_URL=http://n8n:5678/webhook/ai-failover
+    depends_on:
+      - n8n
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=changeme
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=${SUPABASE_DB_HOST}
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=postgres
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=${SUPABASE_DB_PASSWORD}
+      - DB_POSTGRESDB_SSL_ENABLED=true
+      - CLIPROXY_URL=http://cli-proxy-api:8317
+      - CLIPROXY_API_KEY=my-local-key
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/home/node/.n8n/workflows
+    depends_on:
+      - cli-proxy-api
+    restart: unless-stopped
+
+volumes:
+  cli_proxy_auth:
+  n8n_data:
